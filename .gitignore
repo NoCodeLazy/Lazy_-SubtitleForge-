@@ -1,3 +1,4 @@
-bin/"__pycache__/" 
-"*.pyc" 
-"*.pyo" 
+__pycache__/
+*.pyc
+*.pyo
+output/ 

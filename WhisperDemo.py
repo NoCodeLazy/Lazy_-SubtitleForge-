@@ -69,7 +69,15 @@ class WhisperXSubtitleGenerator:
             device=self.device
         )
 
-    def transcribeVedio(self, audio_path, language="zh"):
+    # 封装多段的工具
+    def toDict(self, start, end, text: str) -> dict:
+        d = {}
+        d['start'] = start
+        d['end'] = end
+        d['text'] = text
+        return d
+
+    def transcribeVedio(self, audio_path, language="zh")->list:
         """转录"""
         print(f"🎤 开始转录: {audio_path}")
 
@@ -81,21 +89,21 @@ class WhisperXSubtitleGenerator:
         result = self.model.transcribe(audio, batch_size=16, language=language)
         self.transcribe=result
 
-
+        segment=result["segments"]
 
         #返回whisper结果
-        allText = []
-        for i in range(len(result["segments"])):
-            texti: str = result["segments"][i]['text']
-            texti = re.sub(r'[^a-zA-Z0-9\u4e00-\u9fff]', '', texti)
-            result["segments"][i]['text']=texti
-            allText.append(texti)
 
-        result = "\n".join(allText)
-        return result
+        for i in range(len(segment)):
+
+            texti: str = segment[i]['text']
+            texti = re.sub(r'[^a-zA-Z0-9\u4e00-\u9fff]', '', texti)
+            segment[i]['text']=texti
+
+
+        return segment
 
     #对齐，获取词级时间戳
-    def alignTranscribe(self)->list:
+    def alignTranscribe(self)->tuple:
 
         transcribe=self.transcribe
         audio=self.audio
@@ -107,8 +115,33 @@ class WhisperXSubtitleGenerator:
             self.device,
             return_char_alignments=False
         )
-        return result_aligned["word_segments"]
+        segmentAfterProcess = []
+        segment = result_aligned['segments']
 
+        if not segment:
+            return [], []
+
+        start = None
+        text = ''
+        for i in range(len(segment)):
+            texti: str = segment[i]['text']
+            texti = re.sub(r'[^a-zA-Z0-9\u4e00-\u9fff]', '', texti)
+            segment[i]['text'] = texti
+
+            if start is None:
+                start = segment[i]['start']
+            end = segment[i]['end']
+
+            text = text + texti + '。'
+
+            if (end - start) > 90:
+                segmentAfterProcess.append(self.toDict(start, end, text))
+                start = None
+                text = ''
+            elif i == len(segment) - 1:
+                segmentAfterProcess.append(self.toDict(start, end, text))
+
+        return result_aligned["word_segments"], segmentAfterProcess
 
     def generate_srt(self, segments, output_path):
         """生成字幕文件"""
@@ -139,9 +172,12 @@ class WhisperXSubtitleGenerator:
 if __name__=="__main__":
     generator = WhisperXSubtitleGenerator(
         "large-v3",
-        device="cpu",
+        device="cuda",
         compute_type="int8"
     )
-    path= r"/SubtitleAgent\testVideo.mp4"
+    path= r"D:\Pycharm_project\Agent\SubtitleAgent\output\_uploads\95f0510dc41c.mp4"
     generator.load_models()
     generator.transcribeVedio(audio_path=path)
+    generator.alignTranscribe()
+    while(True):
+        pass

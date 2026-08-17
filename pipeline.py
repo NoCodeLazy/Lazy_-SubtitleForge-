@@ -72,7 +72,6 @@ class PipelineRunner:
     # ---------- 第一阶段：分析（不烧录） ----------
 
     def run_phase1(self, job):
-        backup = None
         try:
             if not task_manager.acquire_active(job):
                 raise PipelineError("已有任务在运行，请等待完成")
@@ -94,39 +93,42 @@ class PipelineRunner:
             gen = self.ensure_model()
 
             job.set_state("running", step="语音转写中", progress=15)
-            text = gen.transcribeVedio(audio_path=video_path)
-            if not text or not text.strip():
+            whisper_segment = gen.transcribeVedio(audio_path=video_path)
+            if len(whisper_segment) == 0:
                 raise PipelineError("未能从视频中识别出任何语音内容")
             _save_json(os.path.join(work_dir, "whisper_transcript.json"), gen.transcribe)
 
-            job.set_state("running", step="LLM 字幕修正中", progress=50)
-            llm_text = self._llm_correct(text, job.theme)
-            _save_text(os.path.join(work_dir, "llm_text.txt"), llm_text)
-
-            job.set_state("running", step="分段处理中", progress=70)
-            text_segments =SrtUtil.removeOthers(llm_text)
-            text_after_llm = [s for s in re.split(r'[，。？]', llm_text) if s.strip()]
-
-
-            total_words = sum(len(s) for s in text_segments)
-            if total_words <= 0:
-                raise PipelineError("分段结果为空，无法生成字幕")
-
-            job.set_state("running", step="字级时间对齐中", progress=78)
-            raw_word_segments = gen.alignTranscribe()
+            job.set_state("running", step="字级时间对齐中", progress=35)
+            r = gen.alignTranscribe()
+            raw_word_segments = r[0]
             _save_json(os.path.join(work_dir, "whisper_align.json"), raw_word_segments)
             word_segments = [{"start": w["start"], "end": w["end"]} for w in raw_word_segments]
-            if len(word_segments) < total_words:
-                raise PipelineError("字级对齐结果不足，无法匹配分段，请重试")
+
+            # LLM 逐段修正
+            segment = r[1]
+            all_text = ''
+            total_chunks = max(len(segment), 1)
+            for idx, s in enumerate(segment):
+                job.set_state("running", step=f"LLM 字幕修正中 ({idx + 1}/{total_chunks})",
+                              progress=round(50 + 30 * (idx + 1) / total_chunks))
+                llm_text = self._llm_correct(s['text'], job.theme)
+                s['text'] = llm_text
+                all_text = all_text + '\n' + llm_text
+            _save_text(os.path.join(work_dir, "llm_text.txt"), all_text)
+
+            job.set_state("running", step="分段处理中", progress=85)
+            remove_others_and_list = SrtUtil.removeOthersAndToList(segment)
+            # 将各段文本按句拆分（保留符号），供显示使用
+            for s in segment:
+                s['text'] = [t for t in re.split(r'[，。？]', s['text']) if t.strip()]
+            text_after_llm = segment
 
             job.set_state("running", step="生成字幕文件中", progress=90)
-            job.text_segments = text_segments
-            job.text_after_llm = text_after_llm
+            job.segments = SrtUtil.build_segments(word_segments, remove_others_and_list, text_after_llm)
             job.word_segments = word_segments
-            backup = list(text_after_llm)
-            SrtUtil.export_srt(job.subtitle_path, word_segments, text_segments, text_after_llm)
+            job.text_after_llm = [seg['text'] for seg in job.segments]
+            SrtUtil.export_srt_from_segments(job.segments, job.subtitle_path)
 
-            job.segments = SrtUtil.build_segments(word_segments, text_segments, text_after_llm)
             job.result = {
                 "segments": job.segments,
                 "subtitle_url": f"/media/{job.task_id}/subtitle",
@@ -151,7 +153,7 @@ class PipelineRunner:
                 raise PipelineError("任务尚未完成第一阶段，请先运行分析")
 
             job.set_state("running", step="应用字词修改中", progress=15)
-            backup = list(job.text_after_llm)
+            backup = [seg.get("text") for seg in job.segments]
             report = []
             for c in corrections or []:
                 seq = c.get("seq")
@@ -160,20 +162,19 @@ class PipelineRunner:
                 if seq is None or old_word is None or new_word is None:
                     report.append({"seq": seq, "success": False, "message": "修改参数不完整"})
                     continue
-                if seq < 0 or seq >= len(job.text_after_llm):
+                if seq < 0 or seq >= len(job.segments):
                     report.append({"seq": seq, "success": False, "message": f"分段序号 {seq} 不存在"})
                     continue
-                new_text, ok = SrtUtil.replace_word(job.text_after_llm[seq], old_word, new_word)
+                new_text, ok = SrtUtil.replace_word(job.segments[seq]["text"], old_word, new_word)
                 if ok:
-                    job.text_after_llm[seq] = new_text
+                    job.segments[seq]["text"] = new_text
                     report.append({"seq": seq, "success": True, "message": f"已替换 {old_word} -> {new_word}"})
                 else:
                     report.append({"seq": seq, "success": False, "message": f"分段 {seq} 中未找到：{old_word}"})
             job.corrections_report = report
-            job.segments = SrtUtil.build_segments(job.word_segments, job.text_segments, job.text_after_llm)
 
             job.set_state("running", step="重新生成字幕文件中", progress=50)
-            SrtUtil.export_srt(job.subtitle_path, job.word_segments, job.text_segments, job.text_after_llm)
+            SrtUtil.export_srt_from_segments(job.segments, job.subtitle_path)
             task_manager.save(job)
 
             job.set_state("running", step="烧录字幕中（较耗时，请耐心等待）", progress=65)
@@ -196,8 +197,9 @@ class PipelineRunner:
             task_manager.save(job)
         except Exception as e:
             if backup is not None:
-                job.text_after_llm = backup
-                job.segments = SrtUtil.build_segments(job.word_segments, job.text_segments, job.text_after_llm)
+                for k, seg in enumerate(job.segments):
+                    if k < len(backup):
+                        seg["text"] = backup[k]
             job.set_state("error", step="失败", error=str(e))
             task_manager.save(job)
         finally:
