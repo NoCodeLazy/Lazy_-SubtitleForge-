@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subtitle Agent - 视频字幕工具</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", -apple-system, sans-serif; background: #f5f6f8; color: #222; }
+  header { background: #1f2937; color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 18px; font-weight: 600; }
+  .tabs button { background: transparent; border: none; color: #9ca3af; font-size: 14px; padding: 8px 16px; cursor: pointer; border-radius: 6px; margin-left: 8px; }
+  .tabs button.active { background: #374151; color: #fff; }
+  .tabs button.clear-btn { background: #7f1d1d; color: #fff; }
+  .tabs button.clear-btn:hover { background: #991b1b; }
+  .container { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 20px; margin-bottom: 20px; }
+  .card h2 { font-size: 15px; margin-bottom: 14px; color: #111827; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  label { font-size: 13px; color: #4b5563; }
+  input[type=text], input[type=number], input[type=password], textarea, select {
+    border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 10px; font-size: 13px; outline: none; width: 100%;
+  }
+  input:focus, textarea:focus, select:focus { border-color: #2563eb; }
+  textarea { resize: vertical; min-height: 60px; }
+  button.primary { background: #2563eb; color: #fff; border: none; padding: 9px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+  button.primary:hover { background: #1d4ed8; }
+  button.primary:disabled { background: #93c5fd; cursor: not-allowed; }
+  button.secondary { background: #e5e7eb; color: #374151; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  button.danger { background: #fee2e2; color: #b91c1c; border: none; padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+  .progress-wrap { background: #e5e7eb; border-radius: 999px; height: 10px; overflow: hidden; margin: 10px 0; }
+  .progress-bar { background: #2563eb; height: 100%; width: 0%; transition: width .3s; }
+  .step-text { font-size: 13px; color: #6b7280; margin-bottom: 6px; }
+  .error-box { background: #fee2e2; color: #b91c1c; padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-top: 10px; display: none; }
+  .hint { font-size: 12px; color: #9ca3af; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; text-align: left; vertical-align: top; }
+  th { background: #f9fafb; color: #6b7280; font-weight: 500; }
+  tr.selected { background: #eff6ff; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: #f3f4f6; }
+  .seq { width: 46px; color: #2563eb; font-weight: 600; }
+  .time { width: 150px; color: #6b7280; white-space: nowrap; }
+  video { width: 100%; border-radius: 8px; background: #000; }
+  .correction-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #e5e7eb; font-size: 13px; }
+  .tag { display: inline-block; background: #dbeafe; color: #1d4ed8; border-radius: 4px; padding: 1px 6px; font-size: 12px; margin-right: 6px; }
+  .ok { color: #059669; font-size: 12px; }
+  .fail { color: #dc2626; font-size: 12px; }
+  .hidden { display: none; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field { margin-bottom: 10px; }
+  .field small { display: block; color: #9ca3af; font-size: 11px; }
+  .group-title { font-size: 13px; font-weight: 600; color: #374151; margin: 14px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #f0f0f0; }
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 Subtitle Agent</h1>
+  <div class="tabs">
+    <button id="tab-process" class="active" onclick="switchTab('process')">视频处理</button>
+    <button id="tab-settings" onclick="switchTab('settings')">设置</button>
+    <button id="btn-clear" class="clear-btn" onclick="clearAllTasks()">结束所有任务</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- ============ 视频处理 ============ -->
+  <div id="view-process">
+    <div class="card">
+      <h2>视频源</h2>
+      <div class="row">
+        <input type="file" id="video-file" accept="video/*" style="width:auto">
+        <span class="hint">或</span>
+        <input type="text" id="video-path" placeholder="本地视频绝对路径（如 D:\videos\a.mp4）" style="flex:1;min-width:260px">
+      </div>
+      <div class="field">
+        <input type="text" id="video-theme" placeholder="视频主题（可选，帮助 LLM 提高修正准确率）">
+      </div>
+      <div class="toolbar">
+        <button class="primary" id="btn-start" onclick="startProcess()">开始分析（不烧录）</button>
+      </div>
+    </div>
+
+    <div class="card hidden" id="card-status">
+      <h2>处理进度</h2>
+      <div class="step-text" id="step-text">等待开始...</div>
+      <div class="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      <div class="error-box" id="error-box"></div>
+    </div>
+
+    <div class="card hidden" id="card-phase1">
+      <h2>字幕分段（点击选中要修改的段）</h2>
+      <div style="overflow-x:auto">
+        <table id="segments-table">
+          <thead><tr><th>序号</th><th>时间</th><th>内容</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="group-title">修改字词</div>
+      <div class="row">
+        <input type="text" id="corr-seq" placeholder="分段序号" style="width:90px">
+        <input type="text" id="corr-old" placeholder="原字词" style="flex:1">
+        <span class="hint">→</span>
+        <input type="text" id="corr-new" placeholder="修正后字词" style="flex:1">
+        <button class="secondary" onclick="addCorrection()">添加到修改列表</button>
+      </div>
+      <div id="corrections-list"></div>
+      <div style="margin-top:12px">
+        <button class="primary" id="btn-apply" onclick="applyCorrections()">确认并烧录</button>
+        <span class="hint" style="margin-left:8px">无需修改可直接烧录</span>
+        <a id="dl-srt-1" class="hint" style="margin-left:12px" target="_blank">下载当前 SRT</a>
+      </div>
+    </div>
+
+    <div class="card hidden" id="card-phase2">
+      <h2>烧录结果</h2>
+      <video id="result-video" controls></video>
+      <div class="toolbar" style="margin-top:12px">
+        <a class="primary" id="dl-video" style="text-decoration:none;padding:9px 20px;border-radius:6px;display:inline-block" href="#">下载带字幕视频</a>
+        <a class="secondary" id="dl-srt-2" style="text-decoration:none;padding:8px 16px;border-radius:6px;display:inline-block" href="#">下载 SRT</a>
+      </div>
+      <div id="report" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <h2>历史任务</h2>
+      <div id="task-list"></div>
+    </div>
+  </div>
+
+  <!-- ============ 设置 ============ -->
+  <div id="view-settings" class="hidden">
+    <div class="card">
+      <h2>设置 <span class="hint">（LLM / 烧录 / 字体修改即时生效；模型相关修改需点“重新加载模型”）</span></h2>
+      <div id="settings-form"></div>
+      <div class="toolbar" style="margin-top:14px">
+        <button class="primary" onclick="saveSettings()">保存设置</button>
+        <button class="secondary" onclick="reloadModel()">重新加载模型</button>
+      </div>
+      <div class="error-box" id="settings-msg"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const state = {
+  taskId: null,
+  corrections: [],
+  timer: null,
+  selectedSeq: null,
+};
+
+const $ = id => document.getElementById(id);
+
+function switchTab(name) {
+  $('view-process').classList.toggle('hidden', name !== 'process');
+  $('view-settings').classList.toggle('hidden', name !== 'settings');
+  $('tab-process').classList.toggle('active', name === 'process');
+  $('tab-settings').classList.toggle('active', name === 'settings');
+  if (name === 'settings') loadSettings();
+}
+
+function fmtTime(sec) {
+  sec = Math.max(0, sec);
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  const ms = Math.round((sec % 1) * 1000);
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+}
+
+function showStatus(visible) { $('card-status').classList.toggle('hidden', !visible); }
+function setProgress(step, pct) {
+  $('step-text').textContent = step || '';
+  $('progress-bar').style.width = (pct || 0) + '%';
+}
+function showError(msg) { $('error-box').textContent = msg || ''; $('error-box').style.display = msg ? 'block' : 'none'; }
+
+// ---------- 开始处理 ----------
+async function startProcess() {
+  const file = $('video-file').files[0];
+  const path = $('video-path').value.trim();
+  const theme = $('video-theme').value.trim();
+  if (!file && !path) { alert('请选择视频文件或填写本地路径'); return; }
+
+  const fd = new FormData();
+  if (file) fd.append('file', file);
+  fd.append('video_path', path);
+  fd.append('theme', theme);
+
+  $('btn-start').disabled = true;
+  $('btn-apply').disabled = true;
+  showStatus(true);
+  setProgress('提交任务中...', 2);
+  showError('');
+  hideCards();
+
+  try {
+    const res = await fetch('/api/process', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) { throw new Error(data.detail || '提交失败'); }
+    state.taskId = data.task_id;
+    state.corrections = [];
+    renderCorrections();
+    startPolling(data.task_id);
+  } catch (e) {
+    setProgress('提交失败', 0);
+    showError(e.message);
+    $('btn-start').disabled = false;
+  }
+}
+
+// ---------- 轮询 ----------
+function startPolling(taskId) {
+  if (state.timer) clearInterval(state.timer);
+  state.timer = setInterval(() => poll(taskId), 1500);
+  poll(taskId);
+}
+
+async function poll(taskId) {
+  try {
+    const res = await fetch(`/api/task/${taskId}`);
+    if (!res.ok) { throw new Error('任务不存在'); }
+    const job = await res.json();
+    setProgress(job.step, job.progress);
+
+    if (job.state === 'error') {
+      stopPolling();
+      showError(job.error || '处理失败');
+      $('btn-start').disabled = false;
+      return;
+    }
+    if (job.state === 'done') {
+      stopPolling();
+      $('btn-start').disabled = false;
+      if (job.phase === 1) { renderSegments(job); state.taskId = job.task_id; loadTasks(); }
+      else if (job.phase === 2) { renderPhase2(job); state.taskId = job.task_id; loadTasks(); }
+    }
+  } catch (e) {
+    stopPolling();
+    showError('查询任务状态失败: ' + e.message);
+    $('btn-start').disabled = false;
+  }
+}
+
+function stopPolling() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
+
+function hideCards() {
+  $('card-phase1').classList.add('hidden');
+  $('card-phase2').classList.add('hidden');
+  $('report').innerHTML = '';
+}
+
+// ---------- 分段展示 ----------
+function renderSegments(job) {
+  hideCards();
+  showError('');
+  $('btn-apply').disabled = false;
+  const tbody = $('segments-table').querySelector('tbody');
+  tbody.innerHTML = '';
+  job.segments.forEach(seg => {
+    const tr = document.createElement('tr');
+    tr.dataset.seq = seg.seq;
+    tr.innerHTML = `<td class="seq">${seg.seq}</td><td class="time">${fmtTime(seg.start)} ~ ${fmtTime(seg.end)}</td><td>${esc(seg.text)}</td>`;
+    tr.onclick = () => selectSeq(seg.seq);
+    tbody.appendChild(tr);
+  });
+  $('card-phase1').classList.remove('hidden');
+  const dl = $('dl-srt-1');
+  dl.href = job.result.subtitle_url || '';
+  setProgress('分析完成，请确认字幕并修改字词', 100);
+  state.selectedSeq = null;
+}
+
+function selectSeq(seq) {
+  state.selectedSeq = seq;
+  document.querySelectorAll('#segments-table tbody tr').forEach(tr => {
+    tr.classList.toggle('selected', Number(tr.dataset.seq) === seq);
+  });
+  $('corr-seq').value = seq;
+  $('corr-old').focus();
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+// ---------- 修改列表 ----------
+function addCorrection() {
+  const seq = parseInt($('corr-seq').value);
+  const oldWord = $('corr-old').value.trim();
+  const newWord = $('corr-new').value.trim();
+  if (isNaN(seq)) { alert('请填写分段序号'); return; }
+  if (!oldWord || !newWord) { alert('请填写原字词与修正后字词'); return; }
+  state.corrections.push({ seq, old_word: oldWord, new_word: newWord });
+  renderCorrections();
+  $('corr-old').value = ''; $('corr-new').value = '';
+}
+
+function removeCorrection(i) { state.corrections.splice(i, 1); renderCorrections(); }
+
+function renderCorrections() {
+  const box = $('corrections-list');
+  box.innerHTML = '';
+  state.corrections.forEach((c, i) => {
+    const div = document.createElement('div');
+    div.className = 'correction-item';
+    div.innerHTML = `<span class="tag">#${c.seq}</span> ${esc(c.old_word)} <span class="hint">→</span> ${esc(c.new_word)}`;
+    const btn = document.createElement('button');
+    btn.className = 'danger';
+    btn.textContent = '移除';
+    btn.onclick = () => removeCorrection(i);
+    div.appendChild(btn);
+    box.appendChild(div);
+  });
+}
+
+// ---------- 确认并烧录 ----------
+async function applyCorrections() {
+  if (!state.taskId) return;
+  $('btn-apply').disabled = true;
+  showStatus(true);
+  setProgress('提交修改...', 3);
+  showError('');
+  try {
+    const res = await fetch(`/api/task/${state.taskId}/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ corrections: state.corrections }),
+    });
+    const data = await res.json();
+    if (!res.ok) { throw new Error(data.detail || '提交失败'); }
+    startPolling(data.task_id);
+  } catch (e) {
+    showError(e.message);
+    $('btn-apply').disabled = false;
+  }
+}
+
+function renderPhase2(job) {
+  hideCards();
+  showError('');
+  const videoUrl = job.result.video_url;
+  const subUrl = job.result.subtitle_url;
+  $('result-video').src = videoUrl;
+  $('dl-video').href = videoUrl + '?download=1';
+  $('dl-srt-2').href = subUrl;
+  const report = job.result.corrections_report || [];
+  let html = '<div class="group-title">修改结果</div>';
+  report.forEach(r => {
+    const cls = r.success ? 'ok' : 'fail';
+    const icon = r.success ? '✓' : '✗';
+    html += `<div class="${cls}">${icon} 序号 ${r.seq}：${esc(r.message)}</div>`;
+  });
+  $('report').innerHTML = html;
+  $('card-phase2').classList.remove('hidden');
+  setProgress('烧录完成', 100);
+}
+
+// ---------- 历史任务 ----------
+async function loadTasks() {
+  try {
+    const res = await fetch('/api/tasks');
+    const data = await res.json();
+    renderTasks(data.tasks || []);
+  } catch (e) { /* ignore */ }
+}
+
+function renderTasks(tasks) {
+  const box = $('task-list');
+  if (!tasks.length) { box.innerHTML = '<span class="hint">暂无历史任务</span>'; return; }
+  box.innerHTML = '';
+  tasks.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'correction-item';
+    const name = t.source_path ? t.source_path.split(/[\\/]/).pop() : '上传文件';
+    const stateLabel = t.state === 'done' ? (t.phase === 1 ? '分析完成' : '已烧录') : t.state;
+    div.innerHTML = `<span class="tag">${esc(name)}</span><span class="hint">${stateLabel}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'secondary';
+    btn.textContent = '查看';
+    btn.onclick = () => viewTask(t.task_id);
+    div.appendChild(btn);
+    box.appendChild(div);
+  });
+}
+
+async function viewTask(taskId) {
+  try {
+    const res = await fetch(`/api/task/${taskId}`);
+    if (!res.ok) { alert('任务不存在'); return; }
+    const job = await res.json();
+    showError('');
+    if (job.phase === 2 && job.state === 'done') { renderPhase2(job); return; }
+    if (job.phase === 1 && job.state === 'done') {
+      state.taskId = taskId;
+      state.corrections = [];
+      renderCorrections();
+      renderSegments(job);
+      return;
+    }
+    alert('该任务状态无法查看');
+  } catch (e) { alert('加载失败: ' + e.message); }
+}
+
+// ---------- 设置 ----------
+const settingSchema = [
+  { group: 'LLM 服务', fields: [
+    { path: ['llm', 'base_url'], label: 'API 地址', type: 'text' },
+    { path: ['llm', 'api_key'], label: 'API Key', type: 'password' },
+    { path: ['llm', 'model_name'], label: '模型名称', type: 'text' },
+    { path: ['llm', 'enabled'], label: '启用 LLM 字幕修正', type: 'checkbox' },
+  ]},
+  { group: 'Whisper 语音模型', fields: [
+    { path: ['whisper', 'model_size'], label: '模型名称/路径', type: 'text', hint: '可填 large-v3 等模型名，或本地模型目录路径' },
+    { path: ['whisper', 'device'], label: '运行设备', type: 'select', options: ['cuda', 'cpu'] },
+    { path: ['whisper', 'compute_type'], label: '计算精度', type: 'text', hint: '如 int8 / float16' },
+    { path: ['whisper', 'offline'], label: '离线模式（不联网检测模型）', type: 'checkbox' },
+    { path: ['whisper', 'cache_dir'], label: '模型缓存目录', type: 'text' },
+    { path: ['whisper', 'language'], label: '识别语言', type: 'text' },
+  ]},
+  { group: '提示词', fields: [
+    { path: ['prompt', 'system_template'], label: '系统提示词模板', type: 'textarea', hint: '{theme} 会自动替换为视频主题' },
+    { path: ['prompt', 'theme_prefix'], label: '主题插入前缀', type: 'text' },
+  ]},
+  { group: 'FFmpeg 烧录质量', fields: [
+    { path: ['ffmpeg', 'preset'], label: 'preset', type: 'select', options: ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow'] },
+    { path: ['ffmpeg', 'crf'], label: 'crf（质量，越低越清晰）', type: 'number' },
+    { path: ['ffmpeg', 'vcodec'], label: 'vcodec', type: 'text' },
+    { path: ['ffmpeg', 'pix_fmt'], label: 'pix_fmt', type: 'text' },
+  ]},
+  { group: '字幕样式', fields: [
+    { path: ['subtitle_style', 'font_name'], label: '字体', type: 'text' },
+    { path: ['subtitle_style', 'font_size'], label: '字号', type: 'number' },
+    { path: ['subtitle_style', 'primary_color'], label: '字体颜色', type: 'text', hint: 'ASS 格式 &HBBGGRR' },
+    { path: ['subtitle_style', 'outline_color'], label: '描边颜色', type: 'text' },
+    { path: ['subtitle_style', 'margin_v'], label: '垂直边距', type: 'number' },
+    { path: ['subtitle_style', 'outline'], label: '描边宽度', type: 'number' },
+    { path: ['subtitle_style', 'shadow'], label: '阴影', type: 'number' },
+  ]},
+  { group: '服务', fields: [
+    { path: ['server', 'host'], label: '监听地址', type: 'text', hint: '修改后需重启' },
+    { path: ['server', 'port'], label: '端口', type: 'number', hint: '修改后需重启' },
+    { path: ['server', 'auto_open_browser'], label: '启动时自动打开浏览器', type: 'checkbox' },
+  ]},
+];
+
+let settingsData = null;
+
+function getByPath(obj, path) { return path.reduce((o, k) => (o == null ? o : o[k]), obj); }
+function setByPath(obj, path, val) {
+  let o = obj;
+  for (let i = 0; i < path.length - 1; i++) { if (o[path[i]] == null) o[path[i]] = {}; o = o[path[i]]; }
+  o[path[path.length - 1]] = val;
+}
+
+function buildSettingsForm() {
+  const box = $('settings-form');
+  box.innerHTML = '';
+  settingsData = null;
+  fetch('/api/settings').then(r => r.json()).then(data => {
+    settingsData = data;
+    renderSettingsForm(data);
+  });
+}
+
+function renderSettingsForm(data) {
+  const box = $('settings-form');
+  box.innerHTML = '';
+  settingSchema.forEach(g => {
+    const title = document.createElement('div');
+    title.className = 'group-title';
+    title.textContent = g.group;
+    box.appendChild(title);
+    const grid = document.createElement('div');
+    grid.className = 'grid2';
+    g.fields.forEach(f => {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+      const label = document.createElement('label');
+      label.textContent = f.label;
+      wrap.appendChild(label);
+      const id = f.path.join('__');
+      let input;
+      if (f.type === 'textarea') {
+        input = document.createElement('textarea');
+      } else if (f.type === 'select') {
+        input = document.createElement('select');
+        f.options.forEach(op => {
+          const opt = document.createElement('option');
+          opt.value = op; opt.textContent = op;
+          input.appendChild(opt);
+        });
+      } else if (f.type === 'checkbox') {
+        input = document.createElement('input');
+        input.type = 'checkbox';
+      } else {
+        input = document.createElement('input');
+        input.type = f.type === 'number' ? 'number' : 'text';
+        if (f.type === 'password') input.type = 'password';
+      }
+      input.id = id;
+      input.dataset.path = JSON.stringify(f.path);
+      const val = getByPath(data, f.path);
+      if (f.type === 'checkbox') input.checked = !!val;
+      else if (f.type === 'select') input.value = val == null ? '' : String(val);
+      else input.value = val == null ? '' : val;
+      wrap.appendChild(input);
+      if (f.hint) { const s = document.createElement('small'); s.textContent = f.hint; wrap.appendChild(s); }
+      grid.appendChild(wrap);
+    });
+    box.appendChild(grid);
+  });
+}
+
+function collectSettings() {
+  const out = JSON.parse(JSON.stringify(settingsData));
+  document.querySelectorAll('#settings-form [data-path]').forEach(el => {
+    const path = JSON.parse(el.dataset.path);
+    let val;
+    if (el.type === 'checkbox') val = el.checked;
+    else if (el.type === 'number') val = Number(el.value);
+    else val = el.value;
+    setByPath(out, path, val);
+  });
+  return out;
+}
+
+async function saveSettings() {
+  const msg = $('settings-msg');
+  msg.style.display = 'none';
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(collectSettings()),
+    });
+    const data = await res.json();
+    if (!res.ok) { throw new Error(data.detail || '保存失败'); }
+    msg.textContent = '已保存';
+    msg.style.display = 'block';
+    msg.className = 'ok';
+  } catch (e) {
+    msg.textContent = '保存失败: ' + e.message;
+    msg.style.display = 'block';
+    msg.className = 'fail';
+  }
+}
+
+async function reloadModel() {
+  const msg = $('settings-msg');
+  msg.style.display = 'none';
+  msg.className = 'ok';
+  msg.textContent = '正在重新加载模型，请稍候...';
+  msg.style.display = 'block';
+  try {
+    const res = await fetch('/api/settings/reload-model', { method: 'POST' });
+    const data = await res.json();
+    msg.textContent = data.message || (data.ok ? '完成' : '失败');
+    msg.className = data.ok ? 'ok' : 'fail';
+  } catch (e) {
+    msg.textContent = '加载失败: ' + e.message;
+    msg.className = 'fail';
+  }
+}
+
+function loadSettings() { buildSettingsForm(); }
+
+// ---------- 结束所有任务 ----------
+async function clearAllTasks() {
+  if (!confirm('确定要清空所有上传视频和处理结果吗？此操作不可恢复。')) return;
+  try {
+    const res = await fetch('/api/tasks/clear', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) { alert(data.detail || '清理失败'); return; }
+    stopPolling();
+    state.taskId = null;
+    state.corrections = [];
+    hideCards();
+    showStatus(false);
+    showError('');
+    $('result-video').src = '';
+    $('dl-video').href = '#';
+    $('dl-srt-2').href = '#';
+    $('dl-srt-1').href = '#';
+    document.querySelector('#segments-table tbody').innerHTML = '';
+    renderCorrections();
+    loadTasks();
+    $('btn-start').disabled = false;
+    $('btn-apply').disabled = false;
+    $('video-file').value = '';
+    $('video-path').value = '';
+    $('video-theme').value = '';
+    alert(data.message || '已清空');
+  } catch (e) {
+    alert('清理失败: ' + e.message);
+  }
+}
+
+// ---------- 初始化 ----------
+loadTasks();
+$('video-file').addEventListener('change', () => {
+  if ($('video-file').files[0]) $('video-path').value = '';
+});
+</script>
+</body>
+</html>
