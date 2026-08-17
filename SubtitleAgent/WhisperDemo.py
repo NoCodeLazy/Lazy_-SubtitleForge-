@@ -3,6 +3,11 @@ import re
 import pysrt
 import whisperx
 import os
+try:
+    from .config_manager import config_manager
+except ImportError:
+    config_manager = None
+
 # 获取当前脚本所在的目录
 script_dir = os.path.dirname(os.path.abspath(__file__))
 ffmpeg_dll_path = os.path.join(script_dir, "bin")
@@ -121,6 +126,13 @@ class WhisperXSubtitleGenerator:
         if not segment:
             return [], []
 
+        max_duration = 90
+        if config_manager is not None:
+            try:
+                max_duration = int(config_manager.get("whisper", "max_segment_duration", default=90) or 90)
+            except Exception:
+                max_duration = 90
+
         start = None
         text = ''
         for i in range(len(segment)):
@@ -134,7 +146,7 @@ class WhisperXSubtitleGenerator:
 
             text = text + texti + '。'
 
-            if (end - start) > 90:
+            if (end - start) > max_duration:
                 segmentAfterProcess.append(self.toDict(start, end, text))
                 start = None
                 text = ''

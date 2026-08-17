@@ -17,10 +17,11 @@ DEFAULT_CONFIG = {
         "compute_type": "int8",
         "offline": True,
         "cache_dir": "C:\\Users\\j2547\\.cache\\huggingface\\hub",
-        "language": "zh"
+        "language": "zh",
+        "max_segment_duration": 90
     },
     "prompt": {
-        "system_template": "你是修正字幕的专家，修正里面的字词，注意修正字幕时要保持原有段落分割。{theme}",
+        "system_template": "你是修正视频字幕的ai专家，结合视频主题修正字幕内容，并适当增添标点来分隔。你必须只输出最终结果，严禁输出任何解释、思考过程。{theme}",
         "theme_prefix": "本次视频主题为："
     },
     "ffmpeg": {

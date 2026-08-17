@@ -1,0 +1,9 @@
+uvicorn
+fastapi
+python-multipart
+whisperx
+pysrt
+ffmpeg-python
+langchain
+langchain-core
+langchain-openai

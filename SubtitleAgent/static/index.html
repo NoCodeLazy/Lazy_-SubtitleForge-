@@ -418,6 +418,7 @@ const settingSchema = [
     { path: ['whisper', 'offline'], label: '离线模式（不联网检测模型）', type: 'checkbox' },
     { path: ['whisper', 'cache_dir'], label: '模型缓存目录', type: 'text' },
     { path: ['whisper', 'language'], label: '识别语言', type: 'text' },
+    { path: ['whisper', 'max_segment_duration'], label: '分段最大时长（秒）', type: 'select', options: ['30', '50', '70', '90'], hint: 'LLM 字幕修正的分块时长上限，越小块越多越慢但更准确' },
   ]},
   { group: '提示词', fields: [
     { path: ['prompt', 'system_template'], label: '系统提示词模板', type: 'textarea', hint: '{theme} 会自动替换为视频主题' },

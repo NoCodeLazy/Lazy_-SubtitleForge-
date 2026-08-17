@@ -2,9 +2,9 @@ import os
 import re
 import json
 import threading
-from SubtitleAgent import SrtUtil, FFmpegUtil
-from SubtitleAgent.config_manager import config_manager
-from SubtitleAgent.task_manager import task_manager
+from . import SrtUtil, FFmpegUtil
+from .config_manager import config_manager
+from .task_manager import task_manager
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
@@ -51,7 +51,7 @@ class PipelineRunner:
         with self._model_lock:
             if self._generator is not None:
                 return self._generator
-            from SubtitleAgent.WhisperDemo import WhisperXSubtitleGenerator
+            from .WhisperDemo import WhisperXSubtitleGenerator
             cfg = config_manager.get("whisper")
             self._generator = WhisperXSubtitleGenerator(
                 cfg["model_size"],

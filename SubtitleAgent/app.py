@@ -9,9 +9,9 @@ if hasattr(sys.stdout, "reconfigure"):
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 
-from SubtitleAgent.config_manager import config_manager
-from SubtitleAgent.task_manager import task_manager, OUTPUT_DIR, UPLOAD_DIR
-from SubtitleAgent.pipeline import pipeline
+from .config_manager import config_manager
+from .task_manager import task_manager, OUTPUT_DIR, UPLOAD_DIR
+from .pipeline import pipeline
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
