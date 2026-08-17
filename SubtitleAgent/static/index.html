@@ -52,6 +52,8 @@
   .field small { display: block; color: #9ca3af; font-size: 11px; }
   .group-title { font-size: 13px; font-weight: 600; color: #374151; margin: 14px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #f0f0f0; }
   .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .pagination { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .page-info { font-size: 13px; color: #374151; }
 </style>
 </head>
 <body>
@@ -97,6 +99,14 @@
           <thead><tr><th>序号</th><th>时间</th><th>内容</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+      <div class="pagination" id="pagination-bar">
+        <button class="secondary" id="btn-prev" onclick="goPage(state.page - 1)">上一页</button>
+        <span class="page-info" id="page-info">第 1 / 1 页</span>
+        <button class="secondary" id="btn-next" onclick="goPage(state.page + 1)">下一页</button>
+        <span class="hint">跳至</span>
+        <input type="number" id="page-input" min="1" value="1" style="width:64px">
+        <button class="secondary" onclick="jumpToPage()">跳转</button>
       </div>
       <div class="group-title">修改字词</div>
       <div class="row">
@@ -151,7 +161,11 @@ const state = {
   corrections: [],
   timer: null,
   selectedSeq: null,
+  page: 1,
+  jobSegments: null,
 };
+
+const PAGE_SIZE = 15;
 
 const $ = id => document.getElementById(id);
 
@@ -258,20 +272,53 @@ function renderSegments(job) {
   hideCards();
   showError('');
   $('btn-apply').disabled = false;
-  const tbody = $('segments-table').querySelector('tbody');
-  tbody.innerHTML = '';
-  job.segments.forEach(seg => {
-    const tr = document.createElement('tr');
-    tr.dataset.seq = seg.seq;
-    tr.innerHTML = `<td class="seq">${seg.seq}</td><td class="time">${fmtTime(seg.start)} ~ ${fmtTime(seg.end)}</td><td>${esc(seg.text)}</td>`;
-    tr.onclick = () => selectSeq(seg.seq);
-    tbody.appendChild(tr);
-  });
+  state.jobSegments = job.segments || [];
+  state.page = 1;
+  state.selectedSeq = null;
+  renderSegmentsPage();
   $('card-phase1').classList.remove('hidden');
   const dl = $('dl-srt-1');
   dl.href = job.result.subtitle_url || '';
   setProgress('分析完成，请确认字幕并修改字词', 100);
-  state.selectedSeq = null;
+}
+
+function renderSegmentsPage() {
+  const segments = state.jobSegments || [];
+  const totalPages = Math.max(1, Math.ceil(segments.length / PAGE_SIZE));
+  if (state.page < 1) state.page = 1;
+  if (state.page > totalPages) state.page = totalPages;
+  const start = (state.page - 1) * PAGE_SIZE;
+  const pageSegs = segments.slice(start, start + PAGE_SIZE);
+
+  const tbody = $('segments-table').querySelector('tbody');
+  tbody.innerHTML = '';
+  pageSegs.forEach(seg => {
+    const tr = document.createElement('tr');
+    tr.dataset.seq = seg.seq;
+    tr.innerHTML = `<td class="seq">${seg.seq}</td><td class="time">${fmtTime(seg.start)} ~ ${fmtTime(seg.end)}</td><td>${esc(seg.text)}</td>`;
+    tr.onclick = () => selectSeq(seg.seq);
+    if (state.selectedSeq === seg.seq) tr.classList.add('selected');
+    tbody.appendChild(tr);
+  });
+
+  $('page-info').textContent = `第 ${state.page} / ${totalPages} 页`;
+  $('btn-prev').disabled = state.page <= 1;
+  $('btn-next').disabled = state.page >= totalPages;
+  const input = $('page-input');
+  input.value = state.page;
+  input.max = totalPages;
+}
+
+function goPage(n) {
+  const totalPages = Math.max(1, Math.ceil((state.jobSegments || []).length / PAGE_SIZE));
+  state.page = Math.max(1, Math.min(totalPages, n));
+  renderSegmentsPage();
+}
+
+function jumpToPage() {
+  const input = $('page-input');
+  const n = parseInt(input.value, 10);
+  goPage(isNaN(n) ? 1 : n);
 }
 
 function selectSeq(seq) {
@@ -585,6 +632,10 @@ async function clearAllTasks() {
     $('dl-srt-2').href = '#';
     $('dl-srt-1').href = '#';
     document.querySelector('#segments-table tbody').innerHTML = '';
+    state.jobSegments = null;
+    state.page = 1;
+    $('page-info').textContent = '第 1 / 1 页';
+    $('page-input').value = 1;
     renderCorrections();
     loadTasks();
     $('btn-start').disabled = false;
