@@ -16,7 +16,7 @@ DEFAULT_CONFIG = {
         "device": "cuda",
         "compute_type": "int8",
         "offline": True,
-        "cache_dir": "C:\\Users\\j2547\\.cache\\huggingface\\hub",
+        "cache_dir": "",
         "language": "zh",
         "max_segment_duration": 90
     },
